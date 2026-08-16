@@ -1,43 +1,47 @@
 const express = require('express');
-const { pool } = require('../server');
+const Skill = require('../models/skill');
 const auth = require('../middleware/auth');
 const router = express.Router();
+
+const serializeSkill = (skill) => {
+  const data = skill.toJSON ? skill.toJSON() : skill;
+  const user = data.user_id || {};
+
+  return {
+    ...data,
+    user_id: user.id || user._id || data.user_id,
+    first_name: user.first_name,
+    last_name: user.last_name,
+    campus_location: user.campus_location,
+  };
+};
 
 // Get all skills (with optional filters)
 router.get('/', async (req, res) => {
   try {
     const { category, is_offering, search } = req.query;
-    let query = `
-      SELECT s.*, u.first_name, u.last_name, u.campus_location 
-      FROM skills s 
-      JOIN users u ON s.user_id = u.id
-      WHERE 1=1
-    `;
-    const params = [];
-    let paramCount = 1;
+    const filters = {};
 
     if (category) {
-      query += ` AND s.category = $${paramCount}`;
-      params.push(category);
-      paramCount++;
+      filters.category = category;
     }
 
     if (is_offering !== undefined) {
-      query += ` AND s.is_offering = $${paramCount}`;
-      params.push(is_offering === 'true');
-      paramCount++;
+      filters.is_offering = is_offering === 'true';
     }
 
     if (search) {
-      query += ` AND (s.name ILIKE $${paramCount} OR s.description ILIKE $${paramCount})`;
-      params.push(`%${search}%`);
-      paramCount++;
+      filters.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ];
     }
 
-    query += ' ORDER BY s.created_at DESC';
+    const skills = await Skill.find(filters)
+      .populate('user_id', 'first_name last_name campus_location')
+      .sort({ created_at: -1 });
 
-    const result = await pool.query(query, params);
-    res.json(result.rows);
+    res.json(skills.map(serializeSkill));
   } catch (error) {
     console.error('Get skills error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -47,11 +51,8 @@ router.get('/', async (req, res) => {
 // Get user's skills
 router.get('/my-skills', auth, async (req, res) => {
   try {
-    const result = await pool.query(
-      'SELECT * FROM skills WHERE user_id = $1 ORDER BY created_at DESC',
-      [req.userId]
-    );
-    res.json(result.rows);
+    const skills = await Skill.find({ user_id: req.userId }).sort({ created_at: -1 });
+    res.json(skills);
   } catch (error) {
     console.error('Get my skills error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -63,12 +64,16 @@ router.post('/', auth, async (req, res) => {
   try {
     const { name, description, category, credits_per_hour, is_offering } = req.body;
 
-    const result = await pool.query(
-      'INSERT INTO skills (user_id, name, description, category, credits_per_hour, is_offering) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-      [req.userId, name, description, category, credits_per_hour, is_offering]
-    );
+    const skill = await Skill.create({
+      user_id: req.userId,
+      name,
+      description,
+      category,
+      credits_per_hour,
+      is_offering,
+    });
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(skill);
   } catch (error) {
     console.error('Create skill error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -78,28 +83,21 @@ router.post('/', auth, async (req, res) => {
 // Update skill
 router.put('/:id', auth, async (req, res) => {
   try {
-    const { name, description, category, credits_per_hour, is_offering } = req.body;
-
-    // Check ownership
-    const skillCheck = await pool.query(
-      'SELECT user_id FROM skills WHERE id = $1',
-      [req.params.id]
-    );
-
-    if (skillCheck.rows.length === 0) {
+    const skill = await Skill.findById(req.params.id);
+    if (!skill) {
       return res.status(404).json({ error: 'Skill not found' });
     }
 
-    if (skillCheck.rows[0].user_id !== req.userId) {
+    if (skill.user_id.toString() !== req.userId) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
-    const result = await pool.query(
-      'UPDATE skills SET name = $1, description = $2, category = $3, credits_per_hour = $4, is_offering = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6 RETURNING *',
-      [name, description, category, credits_per_hour, is_offering, req.params.id]
-    );
+    const updatedSkill = await Skill.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
 
-    res.json(result.rows[0]);
+    res.json(updatedSkill);
   } catch (error) {
     console.error('Update skill error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -109,21 +107,16 @@ router.put('/:id', auth, async (req, res) => {
 // Delete skill
 router.delete('/:id', auth, async (req, res) => {
   try {
-    // Check ownership
-    const skillCheck = await pool.query(
-      'SELECT user_id FROM skills WHERE id = $1',
-      [req.params.id]
-    );
-
-    if (skillCheck.rows.length === 0) {
+    const skill = await Skill.findById(req.params.id);
+    if (!skill) {
       return res.status(404).json({ error: 'Skill not found' });
     }
 
-    if (skillCheck.rows[0].user_id !== req.userId) {
+    if (skill.user_id.toString() !== req.userId) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
-    await pool.query('DELETE FROM skills WHERE id = $1', [req.params.id]);
+    await skill.deleteOne();
     res.json({ message: 'Skill deleted' });
   } catch (error) {
     console.error('Delete skill error:', error);
@@ -136,21 +129,24 @@ router.get('/match/:skillName', async (req, res) => {
   try {
     const { skillName } = req.params;
     const { campus_location } = req.query;
+    const regex = new RegExp(skillName, 'i');
 
-    let query = `
-      SELECT s.*, u.first_name, u.last_name, u.campus_location,
-        (CASE WHEN s.name ILIKE $1 THEN 2 ELSE 1 END) +
-        (CASE WHEN u.campus_location = $2 THEN 1 ELSE 0 END) as match_score
-      FROM skills s
-      JOIN users u ON s.user_id = u.id
-      WHERE s.is_offering = true
-        AND (s.name ILIKE $1 OR s.description ILIKE $1)
-      ORDER BY match_score DESC, s.credits_per_hour ASC
-      LIMIT 10
-    `;
+    const skills = await Skill.find({
+      is_offering: true,
+      $or: [{ name: regex }, { description: regex }],
+    }).populate('user_id', 'first_name last_name campus_location');
 
-    const result = await pool.query(query, [`%${skillName}%`, campus_location]);
-    res.json(result.rows);
+    const rankedSkills = skills
+      .map((skill) => {
+        const data = serializeSkill(skill);
+        const nameScore = regex.test(data.name) ? 2 : 1;
+        const locationScore = data.campus_location === campus_location ? 1 : 0;
+        return { ...data, match_score: nameScore + locationScore };
+      })
+      .sort((a, b) => b.match_score - a.match_score || a.credits_per_hour - b.credits_per_hour)
+      .slice(0, 10);
+
+    res.json(rankedSkills);
   } catch (error) {
     console.error('Match skills error:', error);
     res.status(500).json({ error: 'Server error' });

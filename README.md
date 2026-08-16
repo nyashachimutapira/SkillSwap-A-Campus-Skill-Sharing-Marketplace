@@ -24,7 +24,7 @@ SkillSwap is a campus marketplace where students trade skills using a credit-bas
 
 ### Backend
 - Node.js with Express
-- PostgreSQL database
+- MongoDB with Mongoose
 - Socket.IO for real-time features
 - JWT authentication
 - bcryptjs for password hashing
@@ -55,7 +55,8 @@ SkillSwap-A-Campus-Skill-Sharing-Marketplace/
 │   └── postcss.config.js
 ├── backend/
 │   ├── database/
-│   │   └── schema.sql
+│   │   └── db.js
+│   ├── models/
 │   ├── middleware/
 │   │   └── auth.js
 │   ├── routes/
@@ -74,22 +75,13 @@ SkillSwap-A-Campus-Skill-Sharing-Marketplace/
 ## Getting Started
 
 ### Prerequisites
-
 - Node.js (v14 or higher)
-- PostgreSQL
+- MongoDB (local instance or a cloud service like MongoDB Atlas)
 - npm or yarn
 
-### Database Setup
+### 1. Database Setup
 
-1. Create a PostgreSQL database:
-```sql
-CREATE DATABASE skillswap;
-```
-
-2. Run the schema:
-```bash
-psql -U your_username -d skillswap -f backend/database/schema.sql
-```
+With MongoDB and Mongoose, collections and databases are typically created automatically when the application first connects and saves data, so no initial setup commands are needed.
 
 ### Backend Setup
 
@@ -110,7 +102,7 @@ cp .env.example .env
 
 4. Update `.env` with your database credentials:
 ```
-DATABASE_URL=postgresql://username:password@localhost:5432/skillswap
+DATABASE_URL=mongodb://127.0.0.1:27017/skillswap
 CLIENT_URL=http://localhost:3000
 JWT_SECRET=your_jwt_secret_key_here
 PORT=5000

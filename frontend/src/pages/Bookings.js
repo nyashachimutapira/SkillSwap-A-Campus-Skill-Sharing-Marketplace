@@ -91,21 +91,21 @@ const Bookings = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700">Provider ID</label>
               <input
-                type="number"
+                type="text"
                 required
                 className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                 value={newBooking.provider_id}
-                onChange={(e) => setNewBooking({ ...newBooking, provider_id: parseInt(e.target.value) })}
+                onChange={(e) => setNewBooking({ ...newBooking, provider_id: e.target.value })}
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Skill ID</label>
               <input
-                type="number"
+                type="text"
                 required
                 className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                 value={newBooking.skill_id}
-                onChange={(e) => setNewBooking({ ...newBooking, skill_id: parseInt(e.target.value) })}
+                onChange={(e) => setNewBooking({ ...newBooking, skill_id: e.target.value })}
               />
             </div>
             <div>

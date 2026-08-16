@@ -1,23 +1,28 @@
 const express = require('express');
-const { pool } = require('../server');
+const Booking = require('../models/booking');
+const Review = require('../models/review');
 const auth = require('../middleware/auth');
 const router = express.Router();
+
+const serializeReview = (review) => {
+  const data = review.toJSON ? review.toJSON() : review;
+  return {
+    ...data,
+    reviewer_id: data.reviewer_id?.id || data.reviewer_id?._id || data.reviewer_id,
+    reviewer_name: data.reviewer_id?.first_name,
+    reviewer_last_name: data.reviewer_id?.last_name,
+    reviewer_picture: data.reviewer_id?.profile_picture,
+  };
+};
 
 // Get reviews for a user
 router.get('/:userId', async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT r.*, 
-        reviewer.first_name as reviewer_name,
-        reviewer.last_name as reviewer_last_name,
-        reviewer.profile_picture as reviewer_picture
-      FROM reviews r
-      JOIN users reviewer ON r.reviewer_id = reviewer.id
-      WHERE r.reviewee_id = $1
-      ORDER BY r.created_at DESC`,
-      [req.params.userId]
-    );
-    res.json(result.rows);
+    const reviews = await Review.find({ reviewee_id: req.params.userId })
+      .populate('reviewer_id', 'first_name last_name profile_picture')
+      .sort({ created_at: -1 });
+
+    res.json(reviews.map(serializeReview));
   } catch (error) {
     console.error('Get reviews error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -29,39 +34,34 @@ router.post('/', auth, async (req, res) => {
   try {
     const { reviewee_id, booking_id, rating, comment } = req.body;
 
-    // Check if booking exists and is completed
-    const bookingCheck = await pool.query(
-      'SELECT * FROM bookings WHERE id = $1 AND status = $2',
-      [booking_id, 'completed']
-    );
-
-    if (bookingCheck.rows.length === 0) {
+    const booking = await Booking.findOne({ _id: booking_id, status: 'completed' });
+    if (!booking) {
       return res.status(400).json({ error: 'Booking must be completed to review' });
     }
 
-    const booking = bookingCheck.rows[0];
-
-    // Check if user was part of the booking
-    if (booking.requester_id !== req.userId && booking.provider_id !== req.userId) {
+    const isRequester = booking.requester_id.toString() === req.userId;
+    const isProvider = booking.provider_id.toString() === req.userId;
+    if (!isRequester && !isProvider) {
       return res.status(403).json({ error: 'Not authorized to review this booking' });
     }
 
-    // Check if review already exists
-    const existingReview = await pool.query(
-      'SELECT id FROM reviews WHERE reviewer_id = $1 AND booking_id = $2',
-      [req.userId, booking_id]
-    );
-
-    if (existingReview.rows.length > 0) {
+    const existingReview = await Review.exists({
+      reviewer_id: req.userId,
+      booking_id,
+    });
+    if (existingReview) {
       return res.status(400).json({ error: 'Review already exists for this booking' });
     }
 
-    const result = await pool.query(
-      'INSERT INTO reviews (reviewer_id, reviewee_id, booking_id, rating, comment) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [req.userId, reviewee_id, booking_id, rating, comment]
-    );
+    const review = await Review.create({
+      reviewer_id: req.userId,
+      reviewee_id,
+      booking_id,
+      rating,
+      comment,
+    });
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(review);
   } catch (error) {
     console.error('Create review error:', error);
     res.status(500).json({ error: 'Server error' });

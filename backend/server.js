@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const { Pool } = require('pg');
+const connectDB = require('./database/db');
 const http = require('http');
 const { Server } = require('socket.io');
 
@@ -20,20 +20,7 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
-// Test database connection
-pool.connect((err, client, release) => {
-  if (err) {
-    console.error('Error connecting to database:', err);
-  } else {
-    console.log('Connected to PostgreSQL database');
-    release();
-  }
-});
+connectDB();
 
 // Socket.IO connection
 io.on('connection', (socket) => {
@@ -54,6 +41,21 @@ io.on('connection', (socket) => {
 });
 
 // Routes
+app.get('/', (req, res) => {
+  res.json({
+    message: 'SkillSwap API is running',
+    frontend: process.env.CLIENT_URL || 'http://localhost:3000',
+    endpoints: {
+      auth: '/api/auth',
+      users: '/api/users',
+      skills: '/api/skills',
+      bookings: '/api/bookings',
+      messages: '/api/messages',
+      reviews: '/api/reviews',
+    },
+  });
+});
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/skills', require('./routes/skills'));
@@ -66,4 +68,4 @@ server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-module.exports = { app, pool, io };
+module.exports = { app, io };

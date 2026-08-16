@@ -8,6 +8,7 @@ const Messages = () => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [socket, setSocket] = useState(null);
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 
   useEffect(() => {
     fetchConversations();
@@ -132,14 +133,14 @@ const Messages = () => {
                     <div
                       key={message.id}
                       className={`flex ${
-                        message.sender_id === parseInt(localStorage.getItem('user')?.id || 0)
+                        message.sender_id === currentUser.id
                           ? 'justify-end'
                           : 'justify-start'
                       }`}
                     >
                       <div
                         className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                          message.sender_id === parseInt(localStorage.getItem('user')?.id || 0)
+                          message.sender_id === currentUser.id
                             ? 'bg-indigo-600 text-white'
                             : 'bg-gray-200 text-gray-900'
                         }`}
