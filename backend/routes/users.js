@@ -24,11 +24,11 @@ router.get('/profile', auth, async (req, res) => {
 // Update user profile
 router.put('/profile', auth, async (req, res) => {
   try {
-    const { bio, campus_location, profile_picture } = req.body;
+    const { bio, campus_location, profile_picture, availability } = req.body;
 
     const user = await User.findByIdAndUpdate(
       req.userId,
-      { bio, campus_location, profile_picture },
+      { bio, campus_location, profile_picture, availability },
       { new: true, runValidators: true }
     ).select(publicFields);
 
@@ -39,6 +39,36 @@ router.put('/profile', auth, async (req, res) => {
     res.json(user);
   } catch (error) {
     console.error('Update profile error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Search users to start conversations or browse people
+router.get('/', auth, async (req, res) => {
+  try {
+    const { search = '' } = req.query;
+    const filters = {
+      _id: { $ne: req.userId },
+    };
+
+    if (search.trim()) {
+      const regex = new RegExp(search.trim(), 'i');
+      filters.$or = [
+        { first_name: regex },
+        { last_name: regex },
+        { email: regex },
+        { campus_location: regex },
+      ];
+    }
+
+    const users = await User.find(filters)
+      .select(publicFields)
+      .sort({ first_name: 1, last_name: 1 })
+      .limit(20);
+
+    res.json(users);
+  } catch (error) {
+    console.error('Search users error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

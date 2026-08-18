@@ -38,8 +38,13 @@ router.get('/conversations', auth, async (req, res) => {
           first_name: otherUser.first_name,
           last_name: otherUser.last_name,
           profile_picture: otherUser.profile_picture,
+          last_message: data.content,
           last_message_time: data.created_at,
+          unread_count: !sentByMe && !data.is_read ? 1 : 0,
         });
+      } else if (!sentByMe && !data.is_read) {
+        const conversation = conversations.get(otherUser.id);
+        conversation.unread_count += 1;
       }
     });
 
@@ -75,19 +80,46 @@ router.get('/:userId', auth, async (req, res) => {
   }
 });
 
+// Mark messages from a user as read
+router.put('/:userId/read', auth, async (req, res) => {
+  try {
+    await Message.updateMany(
+      { sender_id: req.params.userId, receiver_id: req.userId, is_read: false },
+      { is_read: true }
+    );
+
+    res.json({ message: 'Messages marked as read' });
+  } catch (error) {
+    console.error('Mark messages read error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Send message
 router.post('/', auth, async (req, res) => {
   try {
     const { receiver_id, content, booking_id } = req.body;
 
+    if (!content?.trim()) {
+      return res.status(400).json({ error: 'Message content is required' });
+    }
+
+    if (receiver_id === req.userId) {
+      return res.status(400).json({ error: 'You cannot message yourself' });
+    }
+
     const message = await Message.create({
       sender_id: req.userId,
       receiver_id,
-      content,
+      content: content.trim(),
       booking_id: booking_id || null,
     });
 
-    res.status(201).json(message);
+    const populatedMessage = await Message.findById(message.id)
+      .populate('sender_id', 'first_name last_name')
+      .populate('receiver_id', 'first_name last_name');
+
+    res.status(201).json(serializeMessage(populatedMessage));
   } catch (error) {
     console.error('Send message error:', error);
     res.status(500).json({ error: 'Server error' });

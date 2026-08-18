@@ -52,6 +52,7 @@ app.get('/', (req, res) => {
       bookings: '/api/bookings',
       messages: '/api/messages',
       reviews: '/api/reviews',
+      notifications: '/api/notifications',
     },
   });
 });
@@ -62,6 +63,7 @@ app.use('/api/skills', require('./routes/skills'));
 app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/reviews', require('./routes/reviews'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {

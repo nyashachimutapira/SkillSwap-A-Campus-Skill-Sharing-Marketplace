@@ -1,10 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { Link } from 'react-router-dom';
 
 const Skills = () => {
   const [skills, setSkills] = useState([]);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
+  const [campusLocation, setCampusLocation] = useState('');
+  const [offeringFilter, setOfferingFilter] = useState('');
+  const [minCredits, setMinCredits] = useState('');
+  const [maxCredits, setMaxCredits] = useState('');
+  const [minRating, setMinRating] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [newSkill, setNewSkill] = useState({
     name: '',
@@ -13,23 +19,30 @@ const Skills = () => {
     credits_per_hour: 10,
     is_offering: true
   });
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const currentUserId = currentUser.id || currentUser._id;
 
-  useEffect(() => {
-    fetchSkills();
-  }, [category, search]);
-
-  const fetchSkills = async () => {
+  const fetchSkills = useCallback(async () => {
     try {
       const params = {};
       if (category) params.category = category;
       if (search) params.search = search;
+      if (campusLocation) params.campus_location = campusLocation;
+      if (offeringFilter) params.is_offering = offeringFilter;
+      if (minCredits) params.min_credits = minCredits;
+      if (maxCredits) params.max_credits = maxCredits;
+      if (minRating) params.min_rating = minRating;
       
       const res = await axios.get('/api/skills', { params });
       setSkills(res.data);
     } catch (err) {
       console.error('Error fetching skills:', err);
     }
-  };
+  }, [campusLocation, category, maxCredits, minCredits, minRating, offeringFilter, search]);
+
+  useEffect(() => {
+    fetchSkills();
+  }, [fetchSkills]);
 
   const handleAddSkill = async (e) => {
     e.preventDefault();
@@ -129,11 +142,11 @@ const Skills = () => {
         </div>
       )}
 
-      <div className="mb-6 flex space-x-4">
+      <div className="mb-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <input
           type="text"
           placeholder="Search skills..."
-          className="flex-1 border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+          className="md:col-span-2 border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -149,6 +162,50 @@ const Skills = () => {
           <option value="Languages">Languages</option>
           <option value="Services">Services</option>
         </select>
+        <input
+          type="text"
+          placeholder="Campus"
+          className="border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+          value={campusLocation}
+          onChange={(e) => setCampusLocation(e.target.value)}
+        />
+        <select
+          className="border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+          value={offeringFilter}
+          onChange={(e) => setOfferingFilter(e.target.value)}
+        >
+          <option value="">Offering or requesting</option>
+          <option value="true">Offering</option>
+          <option value="false">Requesting</option>
+        </select>
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            type="number"
+            min="0"
+            placeholder="Min"
+            className="border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            value={minCredits}
+            onChange={(e) => setMinCredits(e.target.value)}
+          />
+          <input
+            type="number"
+            min="0"
+            placeholder="Max"
+            className="border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            value={maxCredits}
+            onChange={(e) => setMaxCredits(e.target.value)}
+          />
+        </div>
+        <select
+          className="border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+          value={minRating}
+          onChange={(e) => setMinRating(e.target.value)}
+        >
+          <option value="">Any rating</option>
+          <option value="4">4+ stars</option>
+          <option value="3">3+ stars</option>
+          <option value="2">2+ stars</option>
+        </select>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -161,16 +218,46 @@ const Skills = () => {
               </span>
             </div>
             <p className="text-gray-600 mb-4">{skill.description}</p>
-            <div className="flex items-center justify-between text-sm text-gray-500">
+            <div className="flex items-center justify-between text-sm text-gray-500 gap-3">
               <span>
                 {skill.first_name} {skill.last_name}
               </span>
               <span>{skill.campus_location}</span>
             </div>
-            <div className="mt-4">
+            <div className="mt-2 flex items-center justify-between text-sm text-gray-500">
+              <span>{skill.is_offering ? 'Offering' : 'Requesting'}</span>
+              <span>{skill.review_count ? `${skill.average_rating}/5 (${skill.review_count})` : 'No ratings'}</span>
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-3">
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
                 {skill.category}
               </span>
+              <div className="flex items-center gap-2">
+                <Link
+                  to={`/profile/${skill.user_id}`}
+                  className="px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  View Profile
+                </Link>
+                {skill.user_id !== currentUserId && (
+                  <>
+                    {skill.is_offering && (
+                      <Link
+                        to={`/bookings?providerId=${skill.user_id}&skillId=${skill.id}`}
+                        className="px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
+                      >
+                        Request
+                      </Link>
+                    )}
+                    <Link
+                      to={`/messages?userId=${skill.user_id}`}
+                      className="px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+                    >
+                      Message
+                    </Link>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         ))}

@@ -75,10 +75,47 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
+// Reschedule booking
+router.put('/:id/reschedule', auth, async (req, res) => {
+  try {
+    const { proposed_time, duration_minutes, reschedule_reason } = req.body;
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    const isRequester = booking.requester_id.toString() === req.userId;
+    const isProvider = booking.provider_id.toString() === req.userId;
+    if (!isRequester && !isProvider) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const skill = await Skill.findById(booking.skill_id);
+    booking.proposed_time = proposed_time || booking.proposed_time;
+    booking.duration_minutes = duration_minutes || booking.duration_minutes;
+    booking.reschedule_reason = reschedule_reason || '';
+    booking.status = 'pending';
+
+    if (skill) {
+      booking.credits_transferred = Math.ceil((booking.duration_minutes / 60) * skill.credits_per_hour);
+    }
+
+    await booking.save();
+    res.json(serializeBooking(await Booking.findById(booking.id)
+      .populate('requester_id', 'first_name last_name')
+      .populate('provider_id', 'first_name last_name')
+      .populate('skill_id', 'name')));
+  } catch (error) {
+    console.error('Reschedule booking error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Update booking status
 router.put('/:id/status', auth, async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, cancellation_reason } = req.body;
     const booking = await Booking.findById(req.params.id);
 
     if (!booking) {
@@ -101,6 +138,9 @@ router.put('/:id/status', auth, async (req, res) => {
     }
 
     booking.status = status;
+    if (status === 'cancelled') {
+      booking.cancellation_reason = cancellation_reason || '';
+    }
     await booking.save();
 
     res.json(booking);

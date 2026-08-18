@@ -1,5 +1,8 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Skill = require('../models/skill');
+const Review = require('../models/review');
+const User = require('../models/user');
 const auth = require('../middleware/auth');
 const router = express.Router();
 
@@ -13,13 +16,14 @@ const serializeSkill = (skill) => {
     first_name: user.first_name,
     last_name: user.last_name,
     campus_location: user.campus_location,
+    availability: user.availability,
   };
 };
 
 // Get all skills (with optional filters)
 router.get('/', async (req, res) => {
   try {
-    const { category, is_offering, search } = req.query;
+    const { category, is_offering, search, campus_location, min_credits, max_credits, min_rating } = req.query;
     const filters = {};
 
     if (category) {
@@ -30,6 +34,12 @@ router.get('/', async (req, res) => {
       filters.is_offering = is_offering === 'true';
     }
 
+    if (min_credits || max_credits) {
+      filters.credits_per_hour = {};
+      if (min_credits) filters.credits_per_hour.$gte = Number(min_credits);
+      if (max_credits) filters.credits_per_hour.$lte = Number(max_credits);
+    }
+
     if (search) {
       filters.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -37,11 +47,39 @@ router.get('/', async (req, res) => {
       ];
     }
 
+    if (campus_location) {
+      const users = await User.find({
+        campus_location: { $regex: campus_location, $options: 'i' },
+      }).select('_id');
+      filters.user_id = { $in: users.map((user) => user._id) };
+    }
+
     const skills = await Skill.find(filters)
-      .populate('user_id', 'first_name last_name campus_location')
+      .populate('user_id', 'first_name last_name campus_location availability')
       .sort({ created_at: -1 });
 
-    res.json(skills.map(serializeSkill));
+    const userIds = [...new Set(skills.map((skill) => skill.user_id?._id?.toString()).filter(Boolean))];
+    const stats = await Review.aggregate([
+      { $match: { reviewee_id: { $in: userIds.map((id) => new mongoose.Types.ObjectId(id)) } } },
+      { $group: { _id: '$reviewee_id', average_rating: { $avg: '$rating' }, review_count: { $sum: 1 } } },
+    ]);
+    const ratingsByUser = new Map(stats.map((stat) => [
+      stat._id.toString(),
+      {
+        average_rating: Number(stat.average_rating.toFixed(1)),
+        review_count: stat.review_count,
+      },
+    ]));
+
+    const results = skills
+      .map((skill) => {
+        const data = serializeSkill(skill);
+        const rating = ratingsByUser.get(data.user_id?.toString()) || { average_rating: 0, review_count: 0 };
+        return { ...data, ...rating };
+      })
+      .filter((skill) => !min_rating || skill.average_rating >= Number(min_rating));
+
+    res.json(results);
   } catch (error) {
     console.error('Get skills error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -55,6 +93,17 @@ router.get('/my-skills', auth, async (req, res) => {
     res.json(skills);
   } catch (error) {
     console.error('Get my skills error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get skills for a public profile
+router.get('/user/:userId', async (req, res) => {
+  try {
+    const skills = await Skill.find({ user_id: req.params.userId }).sort({ created_at: -1 });
+    res.json(skills);
+  } catch (error) {
+    console.error('Get user skills error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -134,7 +183,7 @@ router.get('/match/:skillName', async (req, res) => {
     const skills = await Skill.find({
       is_offering: true,
       $or: [{ name: regex }, { description: regex }],
-    }).populate('user_id', 'first_name last_name campus_location');
+    }).populate('user_id', 'first_name last_name campus_location availability');
 
     const rankedSkills = skills
       .map((skill) => {

@@ -13,6 +13,8 @@ const bookingSchema = new mongoose.Schema({
   },
   credits_transferred: { type: Number, default: 0 },
   notes: { type: String, trim: true, default: '' },
+  cancellation_reason: { type: String, trim: true, default: '' },
+  reschedule_reason: { type: String, trim: true, default: '' },
 }, {
   timestamps: {
     createdAt: 'created_at',

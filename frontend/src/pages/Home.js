@@ -1,7 +1,138 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import axios from 'axios';
 
 const Home = () => {
+  const [dashboard, setDashboard] = useState({
+    notifications: null,
+    bookings: [],
+    conversations: [],
+    skills: []
+  });
+  const token = localStorage.getItem('token');
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+
+  useEffect(() => {
+    if (!token) return;
+
+    const fetchDashboard = async () => {
+      try {
+        const headers = { Authorization: `Bearer ${token}` };
+        const [notificationsRes, bookingsRes, conversationsRes, skillsRes] = await Promise.all([
+          axios.get('/api/notifications/summary', { headers }),
+          axios.get('/api/bookings', { headers }),
+          axios.get('/api/messages/conversations', { headers }),
+          axios.get('/api/skills', { params: { is_offering: true } })
+        ]);
+
+        setDashboard({
+          notifications: notificationsRes.data,
+          bookings: bookingsRes.data,
+          conversations: conversationsRes.data,
+          skills: skillsRes.data
+        });
+      } catch (err) {
+        console.error('Error loading dashboard:', err);
+      }
+    };
+
+    fetchDashboard();
+  }, [token]);
+
+  if (token) {
+    const upcomingBookings = dashboard.bookings
+      .filter((booking) => ['pending', 'confirmed'].includes(booking.status))
+      .slice(0, 3);
+    const unreadCount = dashboard.notifications?.unread_messages || 0;
+    const recommendedSkills = dashboard.skills
+      .filter((skill) => skill.user_id !== (currentUser.id || currentUser._id))
+      .slice(0, 3);
+
+    return (
+      <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="mt-1 text-gray-600">
+            Welcome back, {currentUser.first_name || 'there'}.
+          </p>
+        </div>
+
+        {dashboard.notifications?.alerts?.length > 0 && (
+          <div className="mb-6 bg-white shadow rounded-lg p-4">
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">Notifications</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {dashboard.notifications.alerts.map((alert) => (
+                <div key={alert} className="rounded-md bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
+                  {alert}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <Link to="/bookings" className="bg-white shadow rounded-lg p-5 hover:bg-gray-50">
+            <p className="text-sm text-gray-500">Upcoming bookings</p>
+            <p className="mt-2 text-3xl font-bold text-gray-900">{upcomingBookings.length}</p>
+          </Link>
+          <Link to="/messages" className="bg-white shadow rounded-lg p-5 hover:bg-gray-50">
+            <p className="text-sm text-gray-500">Unread messages</p>
+            <p className="mt-2 text-3xl font-bold text-gray-900">{unreadCount}</p>
+          </Link>
+          <Link to="/profile" className="bg-white shadow rounded-lg p-5 hover:bg-gray-50">
+            <p className="text-sm text-gray-500">Credit balance</p>
+            <p className="mt-2 text-3xl font-bold text-gray-900">{currentUser.credit_balance || 0}</p>
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white shadow rounded-lg p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Upcoming</h2>
+              <Link to="/bookings" className="text-sm font-medium text-indigo-700 hover:text-indigo-900">View all</Link>
+            </div>
+            <div className="space-y-3">
+              {upcomingBookings.map((booking) => (
+                <div key={booking.id} className="border border-gray-200 rounded-md p-3">
+                  <p className="font-medium text-gray-900">{booking.skill_name}</p>
+                  <p className="text-sm text-gray-600">{new Date(booking.proposed_time).toLocaleString()}</p>
+                  <p className="text-xs text-gray-500">{booking.status}</p>
+                </div>
+              ))}
+              {upcomingBookings.length === 0 && <p className="text-gray-500">No upcoming bookings.</p>}
+            </div>
+          </div>
+
+          <div className="bg-white shadow rounded-lg p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Recommended Skills</h2>
+              <Link to="/skills" className="text-sm font-medium text-indigo-700 hover:text-indigo-900">Browse</Link>
+            </div>
+            <div className="space-y-3">
+              {recommendedSkills.map((skill) => (
+                <div key={skill.id} className="border border-gray-200 rounded-md p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-gray-900">{skill.name}</p>
+                      <p className="text-sm text-gray-600">{skill.first_name} {skill.last_name}</p>
+                    </div>
+                    <Link
+                      to={`/bookings?providerId=${skill.user_id}&skillId=${skill.id}`}
+                      className="px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+                    >
+                      Request
+                    </Link>
+                  </div>
+                </div>
+              ))}
+              {recommendedSkills.length === 0 && <p className="text-gray-500">No recommendations yet.</p>}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white">
       {/* Hero Section */}

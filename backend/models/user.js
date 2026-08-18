@@ -8,6 +8,7 @@ const userSchema = new mongoose.Schema({
   bio: { type: String, trim: true, default: '' },
   campus_location: { type: String, trim: true, default: '' },
   profile_picture: { type: String, trim: true, default: '' },
+  availability: { type: String, trim: true, default: '' },
   credit_balance: { type: Number, default: 0 },
 }, {
   timestamps: {
